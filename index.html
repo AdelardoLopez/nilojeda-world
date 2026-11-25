@@ -162,10 +162,10 @@
     #sign{bottom:auto;top:66px;left:16px;right:auto;font-size:10px;padding:5px 9px}
     .lbl{font-size:10px;padding:5px 8px}
     .lbl.serif{font-size:12px}
-    #panel{top:auto;height:74vh;width:100%;border-radius:22px 22px 0 0;transform:translateY(105%)}
+    #panel{top:auto;height:60vh;width:100%;border-radius:22px 22px 0 0;transform:translateY(105%)}
     body.focused #panel{transform:translateY(0)}
     .p-title{font-size:34px}.p-title.serif{font-size:40px}
-    #back{top:auto;bottom:calc(74vh + 12px)}
+    #back{top:104px;bottom:auto;font-size:10px;padding:9px 14px}
     #shadow{transform:translate(-50%,40vmin)}
   }
 </style>
@@ -625,8 +625,8 @@ function targetRotFor(w){ const p=w.vec; return {x:Math.atan2(p.y,Math.hypot(p.x
 function nearestAngle(cur,t){ const TAU=Math.PI*2; let d=((t-cur)%TAU+TAU)%TAU; if(d>Math.PI) d-=TAU; return cur+d; }
 function focusRegion(i){
   const w=WORLD[i]; state.focused=i; state.auto=false;
-  const t=targetRotFor(w); state.tRotX=t.x; state.tRotY=nearestAngle(state.tRotY,t.y);
-  state.tCamZ=isMobile?5.4:4.3; state.tCamX=isMobile?0:.78; state.tCamY=isMobile?-.95:0;
+  const t=targetRotFor(w); const TILT=.78; state.tRotX=t.x-TILT; state.tRotY=nearestAngle(state.tRotY,t.y);
+  state.tCamZ=isMobile?4.9:3.45; state.tCamX=isMobile?0:.78; state.tCamY=(isMobile?-.58:0)+Math.sin(TILT)*.98;
   renderPanel(w); document.body.classList.add('focused'); $('#panel').setAttribute('aria-hidden','false');
   WORLD.forEach((x,k)=>x.legendEl.classList.toggle('on',k===i)); $('#hint').style.opacity=0;
   history.replaceState(null,'','#'+w.id);
@@ -747,6 +747,149 @@ function buildBatidoMonument(){
   }});
 }
 
+
+/* placement helper: group with x = east, y = surface normal, z = south (faces the camera in the focus view) */
+function placeOn(F,x,z,h=0){
+  const g=new THREE.Group(); const p=F.toWorld(x,z,h); const n=p.clone().normalize();
+  const east=new THREE.Vector3(0,1,0).cross(n).normalize(); const south=east.clone().cross(n).normalize();
+  g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(east,n,south)); g.position.copy(p); return g;
+}
+function canvasTex(w,h,draw){ const c=document.createElement('canvas'); c.width=w; c.height=h; draw(c.getContext('2d'),w,h); const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8; return t; }
+const ease=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const clamp01=t=>Math.max(0,Math.min(1,t));
+
+/* ===== MILFSHAKES: blind boxes that open and drop clothing + giant ✱✱✱ ===== */
+function hoodieShape(){
+  const s=new THREE.Shape();
+  const P=[[-.34,0],[.34,0],[.34,.55],[.6,.36],[.7,.46],[.44,.8],[.2,.86],[.12,1.02],[0,1.07],[-.12,1.02],[-.2,.86],[-.44,.8],[-.7,.46],[-.6,.36],[-.34,.55]];
+  s.moveTo(P[0][0],P[0][1]); P.slice(1).forEach(p=>s.lineTo(p[0],p[1])); s.closePath(); return s;
+}
+function buildMilfshakesMonument(){
+  const w=WORLD.find(x=>x.id==='milfshakes'); const F=surfaceFrame(w);
+  const red=new THREE.MeshStandardMaterial({color:0xe10a1c,roughness:.45});
+  const white=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35});
+  const blackGloss=new THREE.MeshPhysicalMaterial({color:0x111111,roughness:.25,clearcoat:1});
+  const starTex=canvasTex(256,256,(g,W,H)=>{ g.fillStyle='#e10a1c'; g.fillRect(0,0,W,H); g.fillStyle='#fff'; g.font='900 84px Archivo, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('✱✱✱',W/2,H/2+4);
+    g.strokeStyle='rgba(255,255,255,.9)'; g.lineWidth=8; g.strokeRect(14,14,W-28,H-28); });
+  const boxMat=new THREE.MeshStandardMaterial({map:starTex,roughness:.5});
+  const printTex=canvasTex(128,64,(g,W,H)=>{ g.fillStyle='#fff'; g.font='900 40px Archivo, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('✱✱✱',W/2,H/2+2); });
+  const quiltTex=canvasTex(128,128,(g,W,H)=>{ g.fillStyle='#141414'; g.fillRect(0,0,W,H); g.strokeStyle='rgba(255,255,255,.28)'; g.lineWidth=3; for(let y=10;y<H;y+=18){ g.beginPath(); g.moveTo(0,y); g.lineTo(W,y); g.stroke(); } });
+  quiltTex.wrapS=quiltTex.wrapT=THREE.RepeatWrapping; quiltTex.repeat.set(1.4,1.4);
+  const hoodGeo=new THREE.ExtrudeGeometry(hoodieShape(),{depth:.22,bevelEnabled:true,bevelThickness:.04,bevelSize:.04,bevelSegments:3,curveSegments:6}); hoodGeo.translate(0,0,-.11);
+  const makeHoodie=()=>{ const g=new THREE.Group(); const m=new THREE.Mesh(hoodGeo,red); g.add(m);
+    const pr=new THREE.Mesh(new THREE.PlaneGeometry(.34,.17),new THREE.MeshBasicMaterial({map:printTex,transparent:true})); pr.position.set(0,.5,.152); g.add(pr);
+    const pocket=new THREE.Mesh(new THREE.BoxGeometry(.36,.14,.02),new THREE.MeshStandardMaterial({color:0xc40817,roughness:.5})); pocket.position.set(0,.16,.15); g.add(pocket); return g; };
+  const makePuffer=()=>{ const g=new THREE.Group(); const m=new THREE.Mesh(hoodGeo,new THREE.MeshPhysicalMaterial({map:quiltTex,roughness:.2,clearcoat:1})); m.scale.set(1.08,1,1.5); g.add(m);
+    for(let k=0;k<5;k++){ const r=new THREE.Mesh(new THREE.CapsuleGeometry(.05,.5,6,12),blackGloss); r.rotation.z=Math.PI/2; r.position.set(0,.1+k*.15,.17); g.add(r); } return g; };
+  const makeCap=()=>{ const g=new THREE.Group(); const dome=new THREE.Mesh(new THREE.SphereGeometry(.3,24,16,0,Math.PI*2,0,Math.PI/2),red); g.add(dome);
+    const brim=new THREE.Mesh(new THREE.CylinderGeometry(.24,.24,.03,24,1,false,-Math.PI/2,Math.PI),red); brim.scale.set(1,1,1.3); brim.position.set(0,.01,.22); g.add(brim);
+    const pr=new THREE.Mesh(new THREE.PlaneGeometry(.26,.13),new THREE.MeshBasicMaterial({map:printTex,transparent:true})); pr.position.set(0,.16,.255); pr.rotation.x=-.5; g.add(pr); g.position.y=.12; return g; };
+  const B=.06; // box size
+  const boxes=[[-.19,-.02],[0,-.08],[.19,-.02]].map(([x,z],i)=>{
+    const root=placeOn(F,x,z,0); world.add(root);
+    const box=new THREE.Group(); root.add(box);
+    const body=new THREE.Mesh(new THREE.BoxGeometry(B,B*.86,B),boxMat); body.position.y=B*.43; box.add(body);
+    const hinge=new THREE.Group(); hinge.position.set(0,B*.86,-B/2); box.add(hinge);
+    const lid=new THREE.Mesh(new THREE.BoxGeometry(B*1.04,B*.14,B*1.04),boxMat); lid.position.set(0,B*.07,B/2); hinge.add(lid);
+    const items=[makeHoodie(),makePuffer(),makeCap()].map(it=>{ it.scale.setScalar(.001); it.visible=false; box.add(it); return it; });
+    return {box,hinge,items,ph:i*.33,cur:i%3,last:-1};
+  });
+  // giant ✱✱✱ on a black plinth, behind the boxes
+  { const root=placeOn(F,0,.14,0); world.add(root); root.scale.setScalar(1.7);
+    const plinth=new THREE.Mesh(new THREE.BoxGeometry(.2,.012,.04),blackGloss); plinth.position.y=.006; root.add(plinth);
+    for(let k=-1;k<=1;k++){ const st=new THREE.Group(); st.position.set(k*.062,.045,0);
+      for(let a=0;a<3;a++){ const bar=new THREE.Mesh(new THREE.BoxGeometry(.012,.06,.012),white); bar.rotation.z=a*Math.PI/3; st.add(bar); }
+      root.add(st); st.userData.k=k; boxes.push({star:st}); }
+  }
+  monuments.push({ update(dt,tt){
+    boxes.forEach(b=>{
+      if(b.star){ b.star.rotation.y=Math.sin(tt*.9+b.star.userData.k)*.35; return; }
+      const T=6, f=((tt/T)+b.ph)%1, cyc=Math.floor(tt/T+b.ph);
+      if(cyc!==b.last){ b.last=cyc; b.cur=(b.cur+1)%3; b.items.forEach((it,k)=>it.visible=k===b.cur); }
+      const it=b.items[b.cur];
+      b.box.rotation.z = f<.1 ? Math.sin(f*120)*.08 : 0;
+      const open = f<.1?0 : f<.2?ease((f-.1)/.1) : f<.82?1 : f<.92?1-ease((f-.82)/.1) : 0;
+      b.hinge.rotation.x=-open*1.9;
+      const rise = f<.18?0 : f<.32?ease((f-.18)/.14) : f<.68?1 : f<.8?1-ease((f-.68)/.12) : 0;
+      it.scale.setScalar(Math.max(.001,rise*.1)); it.position.y=B*.6+rise*.07+Math.sin(tt*3)*.002*rise; it.rotation.y=tt*1.6;
+    });
+  }});
+}
+
+/* ===== ROOM SERVICE: the red storefront (Pozuelo) + opening pizza box ===== */
+function buildRoomServiceMonument(){
+  const w=WORLD.find(x=>x.id==='roomservice'); const F=surfaceFrame(w);
+  const RED='#b5121b', GOLD='#d8b56c';
+  const facade=canvasTex(1024,640,(g,W,H)=>{
+    g.fillStyle=RED; g.fillRect(0,0,W,H);
+    const sh=g.createLinearGradient(0,0,0,H); sh.addColorStop(0,'rgba(255,255,255,.06)'); sh.addColorStop(1,'rgba(0,0,0,.18)'); g.fillStyle=sh; g.fillRect(0,0,W,H);
+    g.strokeStyle=GOLD; g.lineWidth=3;
+    g.strokeRect(12,12,W-24,H-24);
+    g.beginPath(); g.moveTo(12,128); g.lineTo(W-12,128); g.stroke();
+    g.fillStyle=GOLD; g.font='italic 600 34px "Playfair Display", Georgia, serif'; g.textBaseline='middle'; g.fillText('Room Service',60,72);
+    g.font='600 34px "Playfair Display", Georgia, serif'; g.textAlign='right'; g.fillText('12',W-50,72); g.textAlign='left';
+    // left pilaster panels
+    g.strokeRect(34,150,110,460); g.strokeRect(46,162,86,436);
+    // glazed door
+    g.fillStyle='#161414'; g.fillRect(170,150,210,460);
+    const gl=g.createLinearGradient(170,150,380,610); gl.addColorStop(0,'rgba(255,255,255,.18)'); gl.addColorStop(.45,'rgba(255,255,255,.02)'); gl.addColorStop(1,'rgba(255,255,255,.10)'); g.fillStyle=gl; g.fillRect(170,150,210,460);
+    g.strokeStyle=RED; g.lineWidth=16; g.strokeRect(178,158,194,444); g.lineWidth=10; g.beginPath(); g.moveTo(275,158); g.lineTo(275,602); g.stroke();
+    g.strokeStyle=GOLD; g.lineWidth=3; g.strokeRect(170,150,210,460);
+    // solid red door
+    g.strokeRect(400,150,160,460); g.strokeRect(414,166,132,200); g.strokeRect(414,384,132,210);
+    g.fillStyle=GOLD; g.fillRect(522,380,6,46);
+    g.font='italic 600 26px "Playfair Display", Georgia, serif'; g.fillText('P',470,262);
+    // pick up window
+    g.strokeRect(586,150,412,460);
+    g.fillStyle='#121212'; g.fillRect(606,222,372,190);
+    const g2=g.createLinearGradient(606,222,978,412); g2.addColorStop(0,'rgba(255,255,255,.14)'); g2.addColorStop(.5,'rgba(255,255,255,0)'); g.fillStyle=g2; g.fillRect(606,222,372,190);
+    g.fillStyle=GOLD; g.font='italic 600 46px "Playfair Display", Georgia, serif'; g.textAlign='center'; g.fillText('Pick Up',792,262); g.textAlign='left';
+    g.strokeStyle=GOLD; g.lineWidth=3; g.strokeRect(606,222,372,190); g.beginPath(); g.moveTo(606,312); g.lineTo(978,312); g.stroke();
+    g.strokeStyle='rgba(0,0,0,.22)'; g.lineWidth=2; for(let x=606;x<978;x+=16){ g.beginPath(); g.moveTo(x,440); g.lineTo(x,594); g.stroke(); } for(let y=440;y<594;y+=16){ g.beginPath(); g.moveTo(606,y); g.lineTo(978,y); g.stroke(); }
+    g.strokeStyle=GOLD; g.lineWidth=3; g.strokeRect(606,436,372,160);
+    // chequered door mat
+    for(let i=0;i<10;i++) for(let j=0;j<2;j++){ g.fillStyle=(i+j)%2?'#111':'#eee'; g.fillRect(400+i*16,612+j*12,16,12); }
+  });
+  const redMat=new THREE.MeshStandardMaterial({color:0xb5121b,roughness:.35,metalness:.05});
+  const goldMat=new THREE.MeshStandardMaterial({color:0xd8b56c,roughness:.3,metalness:.6});
+  const W=.17, H=.106, D=.06;
+  const root=placeOn(F,.0,.05,0); world.add(root); root.scale.setScalar(1.6);
+  // building: front face textured (+z = facing the viewer)
+  const mats=[redMat,redMat,new THREE.MeshStandardMaterial({color:0x2a1216,roughness:.8}),redMat,new THREE.MeshStandardMaterial({map:facade,roughness:.32}),redMat];
+  const bld=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),mats); bld.position.y=H/2; root.add(bld);
+  // brick neighbours either side
+  const brick=canvasTex(256,256,(g,Wc,Hc)=>{ g.fillStyle='#7a3a2c'; g.fillRect(0,0,Wc,Hc); g.strokeStyle='rgba(230,200,180,.35)'; g.lineWidth=2;
+    for(let y=0,r=0;y<Hc;y+=16,r++){ g.beginPath(); g.moveTo(0,y); g.lineTo(Wc,y); g.stroke(); for(let x=(r%2)*16;x<Wc;x+=32){ g.beginPath(); g.moveTo(x,y); g.lineTo(x,y+16); g.stroke(); } } });
+  const brickMat=new THREE.MeshStandardMaterial({map:brick,roughness:.9});
+  [-1,1].forEach(sx=>{ const nb=new THREE.Mesh(new THREE.BoxGeometry(.05,H*1.12,D*.9),brickMat); nb.position.set(sx*(W/2+.025),H*.56,-.004); root.add(nb); });
+  // 3D details: gold pick-up shelf, cornice
+  const shelf=new THREE.Mesh(new THREE.BoxGeometry(W*.36,.002,.008),goldMat); shelf.position.set(W*(792/1024-.5),H*(1-430/640),D/2+.004); root.add(shelf);
+  const cornice=new THREE.Mesh(new THREE.BoxGeometry(W*1.03,.004,D*1.08),redMat); cornice.position.y=H+.002; root.add(cornice);
+  // pavement
+  const pave=new THREE.Mesh(new THREE.BoxGeometry(W*1.25,.002,.035),new THREE.MeshStandardMaterial({color:0xb9b1a6,roughness:.95})); pave.position.set(0,.001,D/2+.0175); root.add(pave);
+  // pizza box in front (pink with diamond print), lid opens to reveal the pizza
+  const boxTex=canvasTex(256,256,(g,Wc,Hc)=>{ g.fillStyle='#e7a1ab'; g.fillRect(0,0,Wc,Hc); g.fillStyle='#ffffff';
+    for(let y=0;y<Hc+32;y+=32) for(let x=0;x<Wc+32;x+=32){ g.beginPath(); g.moveTo(x,y-12); g.lineTo(x+10,y); g.lineTo(x,y+12); g.lineTo(x-10,y); g.closePath(); g.fill(); }
+    g.fillStyle='#6d1f2b'; for(let y=16;y<Hc;y+=32) for(let x=16;x<Wc;x+=32){ g.beginPath(); g.moveTo(x,y-7); g.lineTo(x+6,y); g.lineTo(x,y+7); g.lineTo(x-6,y); g.closePath(); g.fill(); } });
+  const boxMat=new THREE.MeshStandardMaterial({map:boxTex,roughness:.7}); const pink=new THREE.MeshStandardMaterial({color:0xe7a1ab,roughness:.7});
+  const pb=placeOn(F,.2,-.12,0); world.add(pb); pb.scale.setScalar(1.5);
+  const S=.06; const base=new THREE.Mesh(new THREE.BoxGeometry(S,S*.12,S),[pink,pink,pink,pink,pink,pink]); base.position.y=S*.06; pb.add(base);
+  const pizzaTex=canvasTex(256,256,(g,Wc,Hc)=>{ g.fillStyle='#e9b46a'; g.beginPath(); g.arc(128,128,124,0,7); g.fill(); g.fillStyle='#c8331f'; g.beginPath(); g.arc(128,128,106,0,7); g.fill();
+    for(let i=0;i<9;i++){ const a=i*.7, r=30+(i%3)*28; g.fillStyle='#f6f1e4'; g.beginPath(); g.arc(128+Math.cos(a)*r,128+Math.sin(a)*r,14,0,7); g.fill(); }
+    for(let i=0;i<5;i++){ const a=i*1.3+.4, r=55; g.fillStyle='#2f6b2c'; g.beginPath(); g.ellipse(128+Math.cos(a)*r,128+Math.sin(a)*r,10,6,a,0,7); g.fill(); } });
+  const pizza=new THREE.Mesh(new THREE.CircleGeometry(S*.46,40),new THREE.MeshStandardMaterial({map:pizzaTex,roughness:.8})); pizza.rotation.x=-Math.PI/2; pizza.position.y=S*.125; pb.add(pizza);
+  const hinge=new THREE.Group(); hinge.position.set(0,S*.12,-S/2); pb.add(hinge);
+  const lid=new THREE.Mesh(new THREE.BoxGeometry(S*1.02,S*.03,S*1.02),[pink,pink,boxMat,pink,pink,pink]); lid.position.set(0,S*.015,S/2); hinge.add(lid);
+  // little steam puffs
+  const steamMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.5,depthWrite:false});
+  const steam=[0,1,2].map(i=>{ const m=new THREE.Mesh(new THREE.SphereGeometry(S*.08,10,10),steamMat.clone()); pb.add(m); return {m,ph:i/3}; });
+  monuments.push({ update(dt,tt){
+    const f=(tt/5)%1; const open = f<.15?ease(f/.15) : f<.7?1 : f<.85?1-ease((f-.7)/.15) : 0;
+    hinge.rotation.x=-open*1.75;
+    steam.forEach(s=>{ const k=((tt*.5)+s.ph)%1; s.m.position.set(Math.sin(k*6+s.ph*9)*S*.08,S*.15+k*S*.9,0); s.m.scale.setScalar(.6+k*1.4); s.m.material.opacity=open*(1-k)*.55; });
+  }});
+}
+
 /* ---------- build ---------- */
 async function build(){
   const tick=()=>new Promise(r=>requestAnimationFrame(()=>r()));
@@ -767,8 +910,8 @@ async function build(){
     grp.add(stick,orb,halo); grp.position.copy(w.vec); grp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),w.vec.clone().normalize());
     world.add(grp); beacons.push({halo,orb,id:w.id,grp});
   });
-  beacons.filter(b=>b.id==='batido').forEach(b=>b.grp.visible=false);
-  buildBatidoMonument();
+  beacons.filter(b=>['batido','milfshakes','roomservice'].includes(b.id)).forEach(b=>b.grp.visible=false);
+  buildBatidoMonument(); buildMilfshakesMonument(); buildRoomServiceMonument();
   loadbar.style.width='100%'; await tick();
   setTimeout(()=>$('#intro').classList.add('gone'),350);
   setTimeout(()=>{ if(state.focused<0) $('#hint').style.opacity=.9; },1600);
