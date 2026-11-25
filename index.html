@@ -641,6 +641,112 @@ $('#close').addEventListener('click',unfocus); $('#back').addEventListener('clic
 addEventListener('keydown',e=>{ if(e.key==='Escape') unfocus(); });
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
+
+/* ---------- monuments: 3D landmarks on each continent ---------- */
+const monuments=[];
+function surfaceFrame(w){
+  const n=w.vec.clone().normalize();
+  const east=new THREE.Vector3(0,1,0).cross(n).normalize();
+  const north=n.clone().cross(east).normalize();
+  // local (x = east, z = north, h = height above surface) -> planet-local coords
+  const toWorld=(x,z,h=0,out=new THREE.Vector3())=>out.copy(n).addScaledVector(east,x).addScaledVector(north,z).normalize().multiplyScalar(1+h);
+  return {n,east,north,toWorld};
+}
+// flat ribbon that follows the sphere: pts = closed list of [x,z]; offsets a..b across the track
+function ribbon(F,pts,a,b,h,colorFn){
+  const N=pts.length, pos=[], col=[], idx=[]; const c=new THREE.Color(); const v=new THREE.Vector3();
+  for(let i=0;i<N;i++){
+    const p=pts[i], q=pts[(i+1)%N], o=pts[(i-1+N)%N];
+    let tx=q[0]-o[0], tz=q[1]-o[1]; const L=Math.hypot(tx,tz)||1; tx/=L; tz/=L;
+    const nx=-tz, nz=tx;
+    F.toWorld(p[0]+nx*a,p[1]+nz*a,h,v); pos.push(v.x,v.y,v.z);
+    F.toWorld(p[0]+nx*b,p[1]+nz*b,h,v); pos.push(v.x,v.y,v.z);
+    c.set(colorFn?colorFn(i):'#ffffff'); col.push(c.r,c.g,c.b,c.r,c.g,c.b);
+  }
+  for(let i=0;i<N;i++){ const j=(i+1)%N, A=i*2,B=i*2+1,C=j*2,D=j*2+1; idx.push(A,C,B, B,C,D); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+function buildBatidoMonument(){
+  const w=WORLD.find(x=>x.id==='batido'); const F=surfaceFrame(w); const grp=new THREE.Group(); world.add(grp);
+  const S=2.1; // overall scale of the landmark
+  // circuit centre line (closed Catmull-Rom in the local tangent plane)
+  const ctrl=[[.15,0],[.12,.07],[.03,.085],[-.05,.05],[-.1,.08],[-.16,.03],[-.14,-.06],[-.04,-.085],[.06,-.06],[.13,-.07]]
+    .map(([x,z])=>new THREE.Vector3(x*S,0,z*S));
+  const curve=new THREE.CatmullRomCurve3(ctrl,true,'centripetal');
+  const SAMPLES=320; const pts=curve.getSpacedPoints(SAMPLES).slice(0,SAMPLES).map(p=>[p.x,p.z]);
+  const W=.017*S;
+  // curvature per sample -> kerbs on corners
+  const curv=pts.map((p,i)=>{ const a=pts[(i-4+SAMPLES)%SAMPLES], b=pts[(i+4)%SAMPLES];
+    const t1=Math.atan2(p[1]-a[1],p[0]-a[0]), t2=Math.atan2(b[1]-p[1],b[0]-p[0]); let d=Math.abs(t2-t1); if(d>Math.PI) d=2*Math.PI-d; return d; });
+  const asphalt=new THREE.Mesh(ribbon(F,pts,-W/2,W/2,.0025,()=>'#2b2b2e'),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85,side:THREE.DoubleSide}));
+  const lineMat=new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide});
+  const edgeL=new THREE.Mesh(ribbon(F,pts,-W/2,-W/2+.0016*S,.0029,()=>'#f4f1ea'),lineMat);
+  const edgeR=new THREE.Mesh(ribbon(F,pts,W/2-.0016*S,W/2,.0029,()=>'#f4f1ea'),lineMat);
+  const kerbCol=i=>curv[i]>.11?(Math.floor(i/3)%2?'#e10a1c':'#ffffff'):'#0b0b0b';
+  const kerbL=new THREE.Mesh(ribbon(F,pts,-W/2-.0045*S,-W/2,.0027,kerbCol),lineMat);
+  const kerbR=new THREE.Mesh(ribbon(F,pts,W/2,W/2+.0045*S,.0027,kerbCol),lineMat);
+  // dashed centre line
+  const dash=new THREE.Mesh(ribbon(F,pts,-.0006*S,.0006*S,.003,i=>Math.floor(i/4)%2?'#2b2b2e':'#c9c6bf'),lineMat);
+  grp.add(asphalt,edgeL,edgeR,kerbL,kerbR,dash);
+  // chequered start line
+  { const i0=0, p=pts[i0], q=pts[1]; let tx=q[0]-p[0], tz=q[1]-p[1]; const L=Math.hypot(tx,tz); tx/=L; tz/=L; const nx=-tz,nz=tx;
+    const cells=6, cs=W/cells; const v=new THREE.Vector3();
+    for(let r=0;r<2;r++) for(let k=0;k<cells;k++){
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(cs,cs),new THREE.MeshBasicMaterial({color:(r+k)%2?0x0b0b0b:0xffffff,side:THREE.DoubleSide}));
+      const off=-W/2+cs*(k+.5), al=(r-.5)*cs;
+      F.toWorld(p[0]+nx*off+tx*al,p[1]+nz*off+tz*al,.0032,v); m.position.copy(v);
+      m.lookAt(v.clone().multiplyScalar(2)); grp.add(m);
+    }
+  }
+  // grandstand (black block with white seat stripes) beside the main straight
+  { const v=new THREE.Vector3(); F.toWorld(.17*S,-.04*S,0,v);
+    const stand=new THREE.Group();
+    for(let k=0;k<4;k++){ const b=new THREE.Mesh(new THREE.BoxGeometry(.05,.006,.008),new THREE.MeshStandardMaterial({color:k%2?0xf4f1ea:0x111111,roughness:.6})); b.position.set(0,.003+k*.006,-k*.007); stand.add(b); }
+    const roof=new THREE.Mesh(new THREE.BoxGeometry(.054,.002,.03),new THREE.MeshStandardMaterial({color:0xe10a1c})); roof.position.set(0,.03,-.012); stand.add(roof);
+    stand.position.copy(v); stand.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.clone().normalize());
+    stand.rotateY(Math.PI/2); stand.scale.setScalar(S); grp.add(stand);
+  }
+  // the car: generic open-wheel racer (yellow / red, no logos)
+  const car=new THREE.Group();
+  const yellow=new THREE.MeshStandardMaterial({color:0xffd21f,roughness:.35,metalness:.2});
+  const red=new THREE.MeshStandardMaterial({color:0xd8101c,roughness:.4});
+  const black=new THREE.MeshStandardMaterial({color:0x111111,roughness:.7});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.0065,.004,.026),yellow); body.position.y=.0035; car.add(body);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(.0032,.012,12),yellow); nose.rotation.x=Math.PI/2; nose.position.set(0,.0032,.019); car.add(nose);
+  const side=new THREE.Mesh(new THREE.BoxGeometry(.011,.0035,.011),red); side.position.set(0,.003,-.002); car.add(side);
+  const fw=new THREE.Mesh(new THREE.BoxGeometry(.016,.0009,.004),red); fw.position.set(0,.0015,.024); car.add(fw);
+  const rw=new THREE.Mesh(new THREE.BoxGeometry(.014,.0012,.004),red); rw.position.set(0,.009,-.013); car.add(rw);
+  const rwp=new THREE.Mesh(new THREE.BoxGeometry(.001,.006,.003),black); rwp.position.set(0,.006,-.013); car.add(rwp);
+  const helmet=new THREE.Mesh(new THREE.SphereGeometry(.0022,16,16),new THREE.MeshStandardMaterial({color:0xffffff,roughness:.2})); helmet.position.set(0,.0068,.002); car.add(helmet);
+  const wheelG=new THREE.CylinderGeometry(.0034,.0034,.0035,16); wheelG.rotateZ(Math.PI/2);
+  [[.0078,.0034,.012],[-.0078,.0034,.012],[.0082,.0036,-.009],[-.0082,.0036,-.009]].forEach(([x,y,z])=>{ const wh=new THREE.Mesh(wheelG,black); wh.position.set(x,y,z); car.add(wh); });
+  car.scale.setScalar(1.15*S); grp.add(car);
+  // milk trail behind the car (Batido = milk)
+  const trailMat=new THREE.MeshPhysicalMaterial({color:0xfbfaf6,roughness:.15,clearcoat:1,transparent:true});
+  const trail=[]; for(let i=0;i<34;i++){ const m=new THREE.Mesh(new THREE.SphereGeometry(.0035*S,12,12),trailMat.clone()); m.visible=false; grp.add(m); trail.push({m,life:0}); }
+  // milk splashes rising from the ground
+  const splashes=[[-.36,.24],[.4,.2],[.06,-.37],[-.4,-.18]].map(([x,z],i)=>{
+    const v=F.toWorld(x,z,0); const g=new THREE.Group(); g.position.copy(v); g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.clone().normalize());
+    const crown=new THREE.Mesh(new THREE.TorusGeometry(.012,.003,10,28),new THREE.MeshPhysicalMaterial({color:0xfbfaf6,roughness:.12,clearcoat:1})); crown.rotation.x=Math.PI/2; g.add(crown);
+    const drop=new THREE.Mesh(new THREE.SphereGeometry(.006,20,20),new THREE.MeshPhysicalMaterial({color:0xfbfaf6,roughness:.08,clearcoat:1})); g.add(drop);
+    g.scale.setScalar(1.8); grp.add(g); return {crown,drop,ph:i*1.3};
+  });
+  const tmp=new THREE.Vector3(), ahead=new THREE.Vector3(), up=new THREE.Vector3(), fwd=new THREE.Vector3(), right=new THREE.Vector3(), M=new THREE.Matrix4();
+  let u=0, spawnT=0, ti=0;
+  monuments.push({ update(dt,tt){
+    u=(u+dt/9)%1; // ~9 s per lap
+    const p=curve.getPointAt(u), q=curve.getPointAt((u+.004)%1);
+    F.toWorld(p.x,p.z,.0026,tmp); F.toWorld(q.x,q.z,.0026,ahead);
+    up.copy(tmp).normalize(); fwd.subVectors(ahead,tmp).normalize(); right.crossVectors(up,fwd).normalize(); fwd.crossVectors(right,up);
+    M.makeBasis(right,up,fwd); car.quaternion.setFromRotationMatrix(M); car.position.copy(tmp);
+    spawnT+=dt; if(spawnT>.06){ spawnT=0; const t=trail[ti++%trail.length]; t.life=1; t.m.visible=true; t.m.position.copy(tmp).addScaledVector(fwd,-.018*S).addScaledVector(up,.004*S); }
+    trail.forEach(t=>{ if(t.life<=0) return; t.life-=dt*1.1; const k=Math.max(0,t.life); t.m.scale.setScalar(.6+(1-k)*1.6); t.m.material.opacity=k*.9; if(k<=0) t.m.visible=false; });
+    splashes.forEach(s=>{ const f=((tt*.55+s.ph)%2.2)/2.2; const hgt=Math.sin(Math.min(1,f*1.4)*Math.PI)*.045; s.drop.position.y=hgt+.004; s.drop.scale.setScalar(f<.72?1:Math.max(.001,1-(f-.72)*3.5));
+      const cf=Math.min(1,f*3); s.crown.scale.setScalar(.3+cf*1.1); s.crown.material.opacity=1; s.crown.visible=f<.55; });
+  }});
+}
+
 /* ---------- build ---------- */
 async function build(){
   const tick=()=>new Promise(r=>requestAnimationFrame(()=>r()));
@@ -659,8 +765,10 @@ async function build(){
     const halo=new THREE.Mesh(new THREE.RingGeometry(.022,.03,48),new THREE.MeshBasicMaterial({color:w.fill==='#ffffff'?0x0d0d0d:head,transparent:true,opacity:.8,side:THREE.DoubleSide,depthWrite:false}));
     halo.rotation.x=-Math.PI/2; halo.position.y=.003;
     grp.add(stick,orb,halo); grp.position.copy(w.vec); grp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),w.vec.clone().normalize());
-    world.add(grp); beacons.push({halo,orb});
+    world.add(grp); beacons.push({halo,orb,id:w.id,grp});
   });
+  beacons.filter(b=>b.id==='batido').forEach(b=>b.grp.visible=false);
+  buildBatidoMonument();
   loadbar.style.width='100%'; await tick();
   setTimeout(()=>$('#intro').classList.add('gone'),350);
   setTimeout(()=>{ if(state.focused<0) $('#hint').style.opacity=.9; },1600);
@@ -683,6 +791,7 @@ function frame(now){
   ringGroup.rotation.y+=dt*.05; moonPivot.rotation.y+=dt*.25;
   const tt=now/1000;
   const dropTarget=state.focused<0?1:0; drops.forEach(d=>{ d.vis=(d.vis??1)+(dropTarget-(d.vis??1))*ease; d.m.scale.setScalar(Math.max(.001,d.vis)); d.a+=dt*d.s; d.m.position.set(Math.cos(d.a)*d.r, d.y+Math.sin(tt*.8+d.ph)*.06, Math.sin(d.a)*d.r); });
+  monuments.forEach(m=>m.update(dt,tt));
   beacons.forEach((b,i)=>{ const f=(tt*.8+i*.37)%1, s=1+f*2.4; b.halo.scale.set(s,s,s); b.halo.material.opacity=.7*(1-f); b.orb.scale.setScalar(1+Math.sin(tt*3+i)*.15); });
 
   world.updateMatrixWorld();
@@ -692,7 +801,7 @@ function frame(now){
     const facing=tmpN.dot(toCam.copy(camera.position).sub(tmpV).normalize());
     tmpV.project(camera);
     const x=(tmpV.x*.5+.5)*innerWidth, y=(-tmpV.y*.5+.5)*innerHeight, el=w.labelEl;
-    const vis=facing>.18 && (state.focused<0||state.focused===i);
+    const vis=facing>.18 && state.focused<0;
     el.style.opacity=vis?Math.min(1,(facing-.18)*4):0; el.style.pointerEvents=vis?'auto':'none';
     el.style.transform=`translate(${x}px,${y}px) translate(-50%,-140%)`;
   });
