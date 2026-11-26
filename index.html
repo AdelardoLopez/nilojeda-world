@@ -890,6 +890,136 @@ function buildRoomServiceMonument(){
   }});
 }
 
+
+/* ===== NIL OJEDA: "21 días" flip calendar + vlog camera ===== */
+function buildNilOjedaMonument(){
+  const w=WORLD.find(x=>x.id==='nilojeda'); const F=surfaceFrame(w);
+  const pageCanvas=n=>canvasTex(256,256,(g,W,H)=>{ g.fillStyle='#ffffff'; g.fillRect(0,0,W,H); g.fillStyle='#e10a1c'; g.fillRect(0,0,W,58);
+    g.fillStyle='#fff'; g.font='900 34px Archivo, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('DÍA',W/2,31);
+    g.fillStyle='#0d0d0d'; g.font='900 150px Archivo, Arial, sans-serif'; g.fillText(String(n),W/2,160); g.font='700 22px Archivo, Arial, sans-serif'; g.fillStyle='#6f6b64'; g.fillText('DE 21',W/2,232); });
+  const pages=[]; for(let i=1;i<=21;i++) pages.push(pageCanvas(i));
+  const root=placeOn(F,-.06,.05,0); world.add(root); root.scale.setScalar(1.6);
+  const C=.07;
+  const back=new THREE.Mesh(new THREE.BoxGeometry(C,C,.012),new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:.5})); back.position.set(0,C/2+.012,-.004); back.rotation.x=-.18; root.add(back);
+  const frontMat=new THREE.MeshStandardMaterial({map:pages[0],roughness:.6});
+  const front=new THREE.Mesh(new THREE.PlaneGeometry(C*.92,C*.92),frontMat); front.position.set(0,C/2+.012,.0035); front.rotation.x=-.18; root.add(front);
+  // flipping page hinged at the top
+  const hinge=new THREE.Group(); hinge.position.set(0,C+.012-.004,.004); hinge.rotation.x=-.18; root.add(hinge);
+  const flipMat=new THREE.MeshStandardMaterial({map:pages[0],roughness:.6,side:THREE.DoubleSide});
+  const flip=new THREE.Mesh(new THREE.PlaneGeometry(C*.92,C*.92),flipMat); flip.position.set(0,-C*.46,.001); hinge.add(flip);
+  for(let k=-1;k<=1;k+=2){ const ring=new THREE.Mesh(new THREE.TorusGeometry(.005,.0013,8,16),new THREE.MeshStandardMaterial({color:0x999999,metalness:.8,roughness:.3})); ring.position.set(k*C*.28,C+.012,0); ring.rotation.y=Math.PI/2; root.add(ring); }
+  const base=new THREE.Mesh(new THREE.BoxGeometry(C*1.15,.012,.05),new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:.4})); base.position.y=.006; root.add(base);
+  // vlog camera on a mini tripod
+  const cam=placeOn(F,.12,-.04,0); world.add(cam); cam.scale.setScalar(1.6);
+  const blk=new THREE.MeshStandardMaterial({color:0x151515,roughness:.35,metalness:.3});
+  for(let a=0;a<3;a++){ const leg=new THREE.Mesh(new THREE.CylinderGeometry(.0012,.0012,.05,6),blk); const ang=a*2*Math.PI/3; leg.position.set(Math.cos(ang)*.01,.023,Math.sin(ang)*.01); leg.rotation.z=Math.cos(ang)*.35; leg.rotation.x=-Math.sin(ang)*.35; cam.add(leg); }
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.034,.022,.016),blk); body.position.y=.058; cam.add(body);
+  const lens=new THREE.Mesh(new THREE.CylinderGeometry(.0075,.0085,.016,20),blk); lens.rotation.x=Math.PI/2; lens.position.set(.004,.058,.016); cam.add(lens);
+  const glass=new THREE.Mesh(new THREE.CircleGeometry(.006,20),new THREE.MeshPhysicalMaterial({color:0x223355,roughness:.05,clearcoat:1,metalness:.5})); glass.position.set(.004,.058,.0242); cam.add(glass);
+  const rec=new THREE.Mesh(new THREE.SphereGeometry(.0028,12,12),new THREE.MeshBasicMaterial({color:0xff1a1a})); rec.position.set(-.011,.068,.0085); cam.add(rec);
+  const mic=new THREE.Mesh(new THREE.CapsuleGeometry(.003,.014,4,8),new THREE.MeshStandardMaterial({color:0x333333,roughness:.9})); mic.rotation.z=Math.PI/2; mic.position.set(0,.073,.004); cam.add(mic);
+  let day=0, t0=0, flipping=false;
+  monuments.push({ update(dt,tt){
+    rec.visible=Math.floor(tt*2)%2===0; cam.rotation.y=Math.sin(tt*.6)*.5;
+    if(!flipping && tt-t0>1.1){ flipping=true; t0=tt; flipMat.map=pages[day]; flipMat.needsUpdate=true; day=(day+1)%21; frontMat.map=pages[day]; frontMat.needsUpdate=true; hinge.visible=true; }
+    if(flipping){ const k=Math.min(1,(tt-t0)/.45); hinge.rotation.x=-.18-ease(k)*2.6; if(k>=1){ flipping=false; hinge.visible=false; hinge.rotation.x=-.18; } }
+  }});
+  hinge.visible=false;
+}
+
+/* ===== NIL OGT: travel plane circling + suitcase ===== */
+function buildNilOgtMonument(){
+  const w=WORLD.find(x=>x.id==='nilogt'); const F=surfaceFrame(w);
+  const white=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.35}); const red=new THREE.MeshStandardMaterial({color:0xe10a1c,roughness:.4}); const dark=new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:.4});
+  const plane=new THREE.Group();
+  const fus=new THREE.Mesh(new THREE.CapsuleGeometry(.006,.034,6,14),white); fus.rotation.x=Math.PI/2; plane.add(fus);
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(.0062,.0062,.03,14,1,true),red); stripe.rotation.x=Math.PI/2; plane.add(stripe);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(.06,.0012,.011),white); wing.position.z=.002; plane.add(wing);
+  const tailH=new THREE.Mesh(new THREE.BoxGeometry(.022,.001,.006),white); tailH.position.z=-.02; plane.add(tailH);
+  const tailV=new THREE.Mesh(new THREE.BoxGeometry(.001,.012,.008),red); tailV.position.set(0,.006,-.02); plane.add(tailV);
+  const prop=new THREE.Mesh(new THREE.BoxGeometry(.02,.002,.001),dark); prop.position.z=.024; plane.add(prop);
+  const win=new THREE.Mesh(new THREE.SphereGeometry(.004,12,12),new THREE.MeshPhysicalMaterial({color:0x1d2a44,roughness:.05,clearcoat:1})); win.position.set(0,.004,.01); win.scale.set(1,.6,1.4); plane.add(win);
+  plane.scale.setScalar(1.7); world.add(plane);
+  // dotted flight path
+  const R=.17, H=.075, dots=[]; const dotMat=new THREE.MeshBasicMaterial({color:0x0d0d0d});
+  for(let i=0;i<40;i++){ const a=i/40*Math.PI*2; const d=new THREE.Mesh(new THREE.SphereGeometry(.0018,6,6),dotMat); d.position.copy(F.toWorld(Math.cos(a)*R,Math.sin(a)*R*.7,H)); world.add(d); }
+  // suitcase with stickers
+  const sc=placeOn(F,0,0,0); world.add(sc); sc.scale.setScalar(1.6);
+  const caseMat=new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:.35});
+  const sticker=canvasTex(256,192,(g,W,Hh)=>{ g.fillStyle='#151515'; g.fillRect(0,0,W,Hh); g.strokeStyle='rgba(255,255,255,.12)'; g.lineWidth=4; for(let x=20;x<W;x+=40){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,Hh); g.stroke(); }
+    const st=[['#e10a1c','CHINA',60,60,-.2],['#ffffff','24H',170,70,.25],['#ffd21f','NIL OGT',110,140,-.08]];
+    st.forEach(([c,t,x,y,r])=>{ g.save(); g.translate(x,y); g.rotate(r); g.fillStyle=c; g.beginPath(); g.roundRect(-48,-20,96,40,10); g.fill(); g.fillStyle=c==='#ffffff'||c==='#ffd21f'?'#0d0d0d':'#fff'; g.font='900 22px Archivo, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(t,0,1); g.restore(); }); });
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.06,.045,.022),[caseMat,caseMat,caseMat,caseMat,new THREE.MeshStandardMaterial({map:sticker,roughness:.4}),caseMat]); body.position.y=.0255; sc.add(body);
+  const handle=new THREE.Mesh(new THREE.TorusGeometry(.008,.0018,8,16,Math.PI),new THREE.MeshStandardMaterial({color:0x888888,metalness:.8,roughness:.3})); handle.position.y=.048; sc.add(handle);
+  [-.022,.022].forEach(x=>{ const wh=new THREE.Mesh(new THREE.CylinderGeometry(.003,.003,.003,10),caseMat); wh.rotation.z=Math.PI/2; wh.position.set(x,.003,.008); sc.add(wh); });
+  const tmp=new THREE.Vector3(), nxt=new THREE.Vector3(), up=new THREE.Vector3(), fwd=new THREE.Vector3(), right=new THREE.Vector3(), M=new THREE.Matrix4();
+  monuments.push({ update(dt,tt){
+    const a=tt*.45, b=a+.03;
+    F.toWorld(Math.cos(a)*R,Math.sin(a)*R*.7,H+Math.sin(tt*1.3)*.006,tmp); F.toWorld(Math.cos(b)*R,Math.sin(b)*R*.7,H,nxt);
+    up.copy(tmp).normalize(); fwd.subVectors(nxt,tmp).normalize(); right.crossVectors(up,fwd).normalize(); fwd.crossVectors(right,up);
+    M.makeBasis(right,up,fwd); plane.quaternion.setFromRotationMatrix(M); plane.rotateZ(-.35); plane.position.copy(tmp);
+    prop.rotation.z=tt*40;
+  }});
+}
+
+/* ===== NIL XYZ: phone on a selfie stick (REC, no cuts) + 24h clock ===== */
+function buildNilXyzMonument(){
+  const w=WORLD.find(x=>x.id==='nilxyz'); const F=surfaceFrame(w);
+  const root=placeOn(F,-.06,.02,0); world.add(root); root.scale.setScalar(2.4);
+  const dark=new THREE.MeshStandardMaterial({color:0x0d0d0d,roughness:.3,metalness:.3});
+  const stick=new THREE.Mesh(new THREE.CylinderGeometry(.0016,.002,.08,8),dark); stick.position.y=.04; stick.rotation.z=.12; root.add(stick);
+  const grip=new THREE.Mesh(new THREE.CylinderGeometry(.003,.003,.018,10),new THREE.MeshStandardMaterial({color:0xe10a1c,roughness:.6})); grip.position.set(.0045,.009,0); grip.rotation.z=.12; root.add(grip);
+  const sc=document.createElement('canvas'); sc.width=180; sc.height=360; const sg=sc.getContext('2d'); const screenTex=new THREE.CanvasTexture(sc); screenTex.colorSpace=THREE.SRGBColorSpace;
+  const drawScreen=(secs,blink)=>{ sg.fillStyle='#111'; sg.fillRect(0,0,180,360);
+    const gr=sg.createLinearGradient(0,0,180,360); gr.addColorStop(0,'#3a3a3a'); gr.addColorStop(1,'#141414'); sg.fillStyle=gr; sg.fillRect(8,8,164,344);
+    sg.fillStyle=blink?'#ff1a1a':'#5a1010'; sg.beginPath(); sg.arc(30,34,9,0,7); sg.fill();
+    sg.fillStyle='#fff'; sg.font='800 18px Archivo, Arial, sans-serif'; sg.textBaseline='middle'; sg.fillText('REC',46,35);
+    const h=String(Math.floor(secs/3600)).padStart(2,'0'), m=String(Math.floor(secs/60)%60).padStart(2,'0'), s2=String(secs%60).padStart(2,'0');
+    sg.font='800 30px Archivo, Arial, sans-serif'; sg.textAlign='center'; sg.fillText(`${h}:${m}:${s2}`,90,180); sg.textAlign='left';
+    sg.font='700 15px Archivo, Arial, sans-serif'; sg.fillStyle='#bbb'; sg.textAlign='center'; sg.fillText('SIN CORTES',90,214); sg.textAlign='left';
+    sg.strokeStyle='rgba(255,255,255,.35)'; sg.lineWidth=2; sg.strokeRect(24,70,132,240); screenTex.needsUpdate=true; };
+  const phone=new THREE.Group(); phone.position.set(-.0095,.083,0); phone.rotation.z=.12; root.add(phone);
+  const pb=new THREE.Mesh(new THREE.BoxGeometry(.024,.046,.003),dark); phone.add(pb);
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(.0215,.043),new THREE.MeshBasicMaterial({map:screenTex})); scr.position.z=.0016; phone.add(scr);
+  // 24h clock
+  const ck=placeOn(F,.11,-.03,0); world.add(ck); ck.scale.setScalar(2.1);
+  const face=canvasTex(256,256,(g,W,H)=>{ g.fillStyle='#fff'; g.beginPath(); g.arc(128,128,124,0,7); g.fill(); g.strokeStyle='#0d0d0d'; g.lineWidth=10; g.stroke();
+    g.fillStyle='#0d0d0d'; g.font='800 20px Archivo, Arial, sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    for(let i=0;i<24;i++){ const a=i/24*Math.PI*2-Math.PI/2; if(i%3===0){ g.fillText(String(i===0?24:i),128+Math.cos(a)*92,128+Math.sin(a)*92); } else { g.beginPath(); g.arc(128+Math.cos(a)*100,128+Math.sin(a)*100,3,0,7); g.fill(); } }
+    g.fillStyle='#e10a1c'; g.font='900 22px Archivo, Arial, sans-serif'; g.fillText('24H',128,170); });
+  const disc=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.006,40),[dark,new THREE.MeshStandardMaterial({map:face,roughness:.5}),dark]);
+  disc.rotation.x=Math.PI/2; disc.position.y=.04; ck.add(disc);
+  const leg=new THREE.Mesh(new THREE.BoxGeometry(.004,.012,.004),dark); leg.position.y=.006; ck.add(leg);
+  const hand=(len,wd,col)=>{ const p=new THREE.Group(); const m=new THREE.Mesh(new THREE.BoxGeometry(wd,len,.0015),new THREE.MeshBasicMaterial({color:col})); m.position.y=len/2; p.add(m); p.position.set(0,.04,.0035); ck.add(p); return p; };
+  const hH=hand(.016,.0028,0x0d0d0d), mH=hand(.024,.0018,0xe10a1c);
+  let lastSec=-1; const start=performance.now();
+  monuments.push({ update(dt,tt){
+    const secs=Math.floor((performance.now()-start)/1000)+ 6*3600+ 42*60; const blink=Math.floor(tt*2)%2===0; const key=secs*2+(blink?1:0);
+    if(key!==lastSec){ lastSec=key; drawScreen(secs,blink); }
+    root.rotation.y=Math.sin(tt*.5)*.4;
+    mH.rotation.z=-tt*1.2; hH.rotation.z=-tt*1.2/24;
+  }});
+}
+
+/* ===== ISLA COLABS: waving flags ===== */
+function buildColabsMonument(){
+  const w=WORLD.find(x=>x.id==='colabs'); const F=surfaceFrame(w);
+  const names=['BEEFEATER','VICIO','SEAT','MEDIAMARKT','MRBEAST'];
+  const flags=[];
+  names.forEach((n,i)=>{
+    const a=-.9+i*.45, r=.1; const root=placeOn(F,Math.sin(a)*r*1.3,Math.cos(a)*r*.45-.02,0); world.add(root); root.scale.setScalar(2);
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(.0012,.0012,.07,6),new THREE.MeshStandardMaterial({color:0x0d0d0d})); pole.position.y=.035; root.add(pole);
+    const tex=canvasTex(256,160,(g,W,H)=>{ g.fillStyle=i%2?'#0d0d0d':'#ffffff'; g.fillRect(0,0,W,H); g.strokeStyle=i%2?'#fff':'#0d0d0d'; g.lineWidth=8; g.strokeRect(4,4,W-8,H-8);
+      g.fillStyle=i%2?'#ffffff':'#0d0d0d'; g.font=`900 ${n.length>8?30:40}px Archivo, Arial, sans-serif`; g.textAlign='center'; g.textBaseline='middle'; g.fillText(n,W/2,H/2); });
+    const geo=new THREE.PlaneGeometry(.04,.025,12,4); geo.translate(.02,0,0);
+    const cloth=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map:tex,side:THREE.DoubleSide,roughness:.8})); cloth.position.set(.0012,.058,0); root.add(cloth);
+    flags.push({geo,base:geo.attributes.position.array.slice(),ph:i});
+  });
+  monuments.push({ update(dt,tt){
+    flags.forEach(f=>{ const p=f.geo.attributes.position.array; for(let k=0;k<p.length;k+=3){ const x=f.base[k]; p[k+2]=Math.sin(x*180-tt*5+f.ph)*.0035*(x/.04); } f.geo.attributes.position.needsUpdate=true; f.geo.computeVertexNormals(); });
+  }});
+}
+
 /* ---------- build ---------- */
 async function build(){
   const tick=()=>new Promise(r=>requestAnimationFrame(()=>r()));
@@ -910,8 +1040,9 @@ async function build(){
     grp.add(stick,orb,halo); grp.position.copy(w.vec); grp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),w.vec.clone().normalize());
     world.add(grp); beacons.push({halo,orb,id:w.id,grp});
   });
-  beacons.filter(b=>['batido','milfshakes','roomservice'].includes(b.id)).forEach(b=>b.grp.visible=false);
+  beacons.filter(b=>b.id!=='next').forEach(b=>b.grp.visible=false);
   buildBatidoMonument(); buildMilfshakesMonument(); buildRoomServiceMonument();
+  buildNilOjedaMonument(); buildNilOgtMonument(); buildNilXyzMonument(); buildColabsMonument();
   loadbar.style.width='100%'; await tick();
   setTimeout(()=>$('#intro').classList.add('gone'),350);
   setTimeout(()=>{ if(state.focused<0) $('#hint').style.opacity=.9; },1600);
